@@ -2,8 +2,6 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <husarnet.h>
-#include <MAVLink.h>
-
 
 // ===========================
 // Select camera model in board_config.h
@@ -16,9 +14,6 @@
 const char *ssid = "2.4";
 const char *password = "password";
 
-const int tcpPort = 8888;
-const int baudRate = 115200;
-
 
 // Husarnet credentials
 #define HOSTNAME "host"
@@ -27,7 +22,6 @@ const int baudRate = 115200;
 HusarnetClient husarnet;
 
 unsigned long previousMillis1 = 0;
-long LOOP1 = (1 * 1000);
 TaskHandle_t SerialTaskHandle;
 
 int count;
@@ -37,8 +31,6 @@ void setupLedFlash();
 
 void setup() {
   Serial.begin(115200);
-  Serial2.begin(baudRate, SERIAL_8N1, RX2, TX2);
-
   Serial.setDebugOutput(true);
   Serial.println();
   pinMode(2, OUTPUT);
