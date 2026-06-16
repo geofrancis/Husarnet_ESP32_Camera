@@ -4,49 +4,44 @@
 #include <husarnet.h>
 #include <MAVLink.h>
 
+
+// ===========================
+// Select camera model in board_config.h
+// ===========================
 #include "board_config.h"
 
+// ===========================
+// Enter your WiFi credentials
+// ===========================
 const char *ssid = "2.4";
 const char *password = "password";
 
 const int tcpPort = 8888;
 const int baudRate = 115200;
 
-#define RX2 3
-#define TX2 4
-
-WiFiServer server(tcpPort);
-WiFiClient client;
-
 
 // Husarnet credentials
-#define HOSTNAME "rovercam"
-#define JOIN_CODE "************"
+#define HOSTNAME "host"
+#define JOIN_CODE "****************************"
 
 HusarnetClient husarnet;
 
 unsigned long previousMillis1 = 0;
 long LOOP1 = (1 * 1000);
+TaskHandle_t SerialTaskHandle;
 
-
-
+int count;
 
 void startCameraServer();
 void setupLedFlash();
 
 void setup() {
   Serial.begin(115200);
-
   Serial2.begin(baudRate, SERIAL_8N1, RX2, TX2);
-
-
-
-
-
 
   Serial.setDebugOutput(true);
   Serial.println();
-
+  pinMode(2, OUTPUT);
 
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
@@ -144,15 +139,11 @@ void setup() {
   }
   Serial.println("");
   Serial.println("WiFi connected");
-    delay(1000);
+  delay(1000);
 
-  husarnet.join(HOSTNAME, JOIN_CODE);
-  while (!husarnet.isJoined()) {
-    Serial.println("Waiting for Husarnet network...");
-    delay(1000);
-  }
+
   Serial.println("Husarnet network joined");
-
+  digitalWrite(2, HIGH);
   Serial.print("Husarnet IP: ");
   Serial.println(husarnet.getIpAddress().c_str());
 
@@ -161,68 +152,43 @@ void setup() {
 
   startCameraServer();
 
+xTaskCreatePinnedToCore(
+  husarnettask,           // Function to implement the task
+  "SerialIO",         // Name of the task
+  10000,              // Stack size in words (10k is usually plenty)
+  NULL,               // Task input parameter
+  4,                  // Priority of the task (1 is higher than 0)
+  &SerialTaskHandle,  // Task handle
+  0                   // Core where the task should run (Core 0)
+);
+
+
   Serial.print("Camera Ready! Use 'http://");
   Serial.print(WiFi.localIP());
   Serial.println("' to connect");
 }
 
+void husarnettask(void *pvParameters) {
+  husarnet.join(HOSTNAME, JOIN_CODE);
+  while (!husarnet.isJoined()) {
+    Serial.println("Waiting for Husarnet network...");
+    delay(1000);
+    count++;
+    if (count > 20) {
+      ESP.restart();
+    }
+  }
+  for (;;) {
+    vTaskDelay(2);
+  }
+}
+
+
+
+
 void loop() {
-  // Do nothing. Everything is done in another task by the web server
-    // Check for new client connection
-  if (!client || !client.connected()) {
-    client = server.available();
-    if (client) {
-      Serial.println("New TCP Client connected!");
-    }
-  }
 
-  // Case 1: Data from TCP -> Serial
-  if (client.connected() && client.available()) {
-    while (client.available()) {
-      Serial2.write(client.read());
-      Serial.print("+");
-    }
-  }
-
-  // Case 2: Data from Serial -> TCP
-  if (Serial2.available()) {
-    while (Serial2.available()) {
-      if (client.connected()) {
-        client.write(Serial2.read());
-      } else {
-        // Clear buffer if no client is connected
-        Serial2.read();
-      }
-    }
-  }
-
-
-  unsigned long currentMillis1 = millis();
-  if (currentMillis1 - previousMillis1 >= LOOP1) {
-    previousMillis1 = currentMillis1;
-    MAVLINK_HB();
-  }
 }
 
 
 
-
-
-void MAVLINK_HB() {
-  //if (FCHB > 1) {
-  uint8_t autopilot_type = MAV_AUTOPILOT_INVALID;
-  uint8_t system_mode = MAV_MODE_PREFLIGHT;  ///< Booting up
-  uint32_t custom_mode = 1;                  ///< Custom mode, can be defined by user/adopter
-  uint8_t system_state = MAV_STATE_STANDBY;  ///< System ready for flight
-  mavlink_message_t msg;
-  uint8_t buf[MAVLINK_MAX_PACKET_LEN];
-  int type = MAV_TYPE_ONBOARD_CONTROLLER;
-  // Pack the message
-
-  mavlink_msg_heartbeat_pack(1, 241, &msg, type, autopilot_type, system_mode, custom_mode, system_state);
-  uint16_t len = mavlink_msg_to_send_buffer(buf, &msg);
-  client.write(buf, len);
-  Serial2.write(buf, len);
-   //Serial.print("hb");
-  //}
-}
